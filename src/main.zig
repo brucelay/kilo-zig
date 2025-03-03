@@ -43,14 +43,14 @@ fn enableRawMode() !void {
     new_termios.iflag.INPCK = false; // disable input parity checking
     new_termios.iflag.ISTRIP = false; // disable stripping of 8th input bit
 
-    new_termios.cflag.CSIZE = std.posix.CSIZE.CS8; // character size
+    new_termios.cflag.CSIZE = posix.CSIZE.CS8; // character size
 
     new_termios.oflag.OPOST = false; // disable output post-processing
 
-    const V_MIN = @intFromEnum(std.posix.V.MIN);
-    const V_TIME = @intFromEnum(std.posix.V.TIME);
+    const V_MIN = @intFromEnum(posix.V.MIN);
+    const V_TIME = @intFromEnum(posix.V.TIME);
     new_termios.cc[V_MIN] = 0; // min bytes for read() to return
-    const return_timeout: std.posix.cc_t = 1; // * 100ms
+    const return_timeout: posix.cc_t = 1; // * 100ms
     new_termios.cc[V_TIME] = return_timeout;
 
     try posix.tcsetattr(stdin, posix.TCSA.FLUSH, new_termios);
