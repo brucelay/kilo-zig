@@ -119,11 +119,13 @@ fn getWindowSize() !std.posix.system.winsize {
     return window_size;
 }
 
-fn editorDrawRows() !void {
+fn editorDrawRows(allocator: std.mem.Allocator, arr: *std.ArrayListUnmanaged(u8)) !void {
     for (0..config.window_size.ws_row - 1) |_| {
-        _ = try stdout.write("~\r\n");
+        try arr.appendSlice(allocator, "~\r\n");
     }
-    _ = try stdout.write("~");
+
+    try arr.appendSlice(allocator, "~");
+    _ = try stdout.write(arr.items);
 }
 
 fn clearScreen() !void {
@@ -132,13 +134,19 @@ fn clearScreen() !void {
     _ = try stdout.write(erase_screen_seq);
 }
 
-/// Clear the screen and redraw the editor
+/// Redraw editor
 fn editorRefreshScreen() !void {
+    var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
+    defer arena.deinit();
+
+    const allocator = arena.allocator();
+    var arr = try std.ArrayListUnmanaged(u8).initCapacity(allocator, 1024);
+
     // ANSI escape sequences
     // https://vt100.net/docs/vt100-ug/chapter3.html#ED
     try clearScreen();
     _ = try resetCursorPosition();
-    _ = try editorDrawRows();
+    _ = try editorDrawRows(allocator, &arr);
     _ = try resetCursorPosition();
 }
 
