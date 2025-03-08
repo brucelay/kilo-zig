@@ -129,6 +129,8 @@ fn editorDrawRows(allocator: std.mem.Allocator, arr: *std.ArrayListUnmanaged(u8)
 }
 
 fn clearScreen() !void {
+    // ANSI escape sequences
+    // https://vt100.net/docs/vt100-ug/chapter3.html#ED
     const clear_screen_escape_code = "[2J";
     const erase_screen_seq = escape_character ++ clear_screen_escape_code;
     _ = try stdout.write(erase_screen_seq);
@@ -142,12 +144,12 @@ fn editorRefreshScreen() !void {
     const allocator = arena.allocator();
     var arr = try std.ArrayListUnmanaged(u8).initCapacity(allocator, 1024);
 
-    // ANSI escape sequences
-    // https://vt100.net/docs/vt100-ug/chapter3.html#ED
+    _ = try stdout.write(escape_character ++ "[?25l"); // hide cursor
     try clearScreen();
     _ = try resetCursorPosition();
     _ = try editorDrawRows(allocator, &arr);
     _ = try resetCursorPosition();
+    _ = try stdout.write(escape_character ++ "[?25h"); // show cursor
 }
 
 /// Reset cursor position to top-left of screen
