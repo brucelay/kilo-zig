@@ -1,7 +1,7 @@
 const std = @import("std");
 const posix = std.posix;
 
-var running = true;
+const KILO_ZIG_VERSION = "0.0.1";
 
 // vt100
 const escape_character = "\x1b";
@@ -11,6 +11,8 @@ var config: Config = undefined;
 
 const stdout = std.io.getStdOut().writer();
 const stdin = std.io.getStdIn().reader();
+
+var running = true;
 
 const CursorPosition = struct {
     rows: @TypeOf(config.window_size.ws_row),
@@ -120,13 +122,23 @@ fn getWindowSize() !std.posix.system.winsize {
 }
 
 fn editorDrawRows(allocator: std.mem.Allocator, arr: *std.ArrayListUnmanaged(u8)) !void {
+    const writer = arr.writer(allocator);
     const clear_right = escape_character ++ "[K"; // clear right of cursor
-    for (0..config.window_size.ws_row - 1) |_| {
-        try arr.appendSlice(allocator, "~" ++ clear_right ++ "\r\n");
+    for (0..config.window_size.ws_row - 1) |i| {
+        _ = try writer.write("~");
+        if (i == config.window_size.ws_row / 3) {
+            // draw welcome message
+            const welcome = std.fmt.comptimePrint("kilo-zig -- version {s}", .{KILO_ZIG_VERSION});
+            const left_padding = (config.window_size.ws_col - welcome.len) / 2; // center text
+            for (0..left_padding) |_| {
+                _ = try writer.write(" ");
+            }
+            _ = try writer.write(welcome);
+        }
+        _ = try writer.write(clear_right ++ "\r\n");
     }
 
-    try arr.appendSlice(allocator, "~");
-    try arr.appendSlice(allocator, clear_right);
+    _ = try writer.write("~" ++ clear_right);
     _ = try stdout.write(arr.items);
 }
 
