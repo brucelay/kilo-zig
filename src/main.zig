@@ -6,7 +6,14 @@ const KILO_ZIG_VERSION = "0.0.1";
 // vt100
 const escape_character = "\x1b";
 
-const Config = struct { original_termios: posix.termios, window_size: std.posix.system.winsize };
+const Config = struct {
+    // cursor pos
+    cx: u16,
+    cy: u16,
+    original_termios: posix.termios,
+    window_size: std.posix.system.winsize,
+};
+
 var config: Config = undefined;
 
 const stdout = std.io.getStdOut().writer();
@@ -17,6 +24,13 @@ var running = true;
 const CursorPosition = struct {
     rows: @TypeOf(config.window_size.ws_row),
     cols: @TypeOf(config.window_size.ws_col),
+};
+
+const editorKey = enum(u16) {
+    ARROW_UP = 1000,
+    ARROW_DOWN,
+    ARROW_LEFT,
+    ARROW_RIGHT,
 };
 
 pub fn main() !void {
@@ -55,6 +69,9 @@ fn mainLoop() !void {
 }
 
 fn initEditor() !void {
+    config.cx = 10;
+    config.cy = 10;
+
     config.window_size = try getWindowSize();
 }
 
@@ -122,6 +139,7 @@ fn getWindowSize() !std.posix.system.winsize {
 }
 
 fn editorDrawRows(allocator: std.mem.Allocator, arr: *std.ArrayListUnmanaged(u8)) !void {
+    _ = try resetCursorPosition();
     const writer = arr.writer(allocator);
     const clear_right = escape_character ++ "[K"; // clear right of cursor
     for (0..config.window_size.ws_row - 1) |i| {
@@ -147,6 +165,7 @@ fn clearScreen() !void {
     // https://vt100.net/docs/vt100-ug/chapter3.html#ED
     const clear_screen_escape_code = "[2J";
     const erase_screen_seq = escape_character ++ clear_screen_escape_code;
+    _ = try resetCursorPosition();
     _ = try stdout.write(erase_screen_seq);
 }
 
@@ -159,9 +178,9 @@ fn editorRefreshScreen() !void {
     var arr = try std.ArrayListUnmanaged(u8).initCapacity(allocator, 1024);
 
     _ = try stdout.write(escape_character ++ "[?25l"); // hide cursor
-    _ = try resetCursorPosition();
     _ = try editorDrawRows(allocator, &arr);
-    _ = try resetCursorPosition();
+    // move cursor to position
+    _ = try stdout.print("{s}[{d};{d}H", .{ escape_character, config.cy + 1, config.cx + 1 });
     _ = try stdout.write(escape_character ++ "[?25h"); // show cursor
 }
 
@@ -171,21 +190,66 @@ fn resetCursorPosition() !void {
     _ = try stdout.write(reset_cursor_position_seq);
 }
 
-fn editorReadKey() !u8 {
+fn editorReadKey() !u16 {
     var c: u8 = 0;
-    if (stdin.readByte()) |char| {
-        c = char;
-    } else |err| switch (err) {
-        error.EndOfStream => {}, // ignore as likely just read timeout
-        else => |leftover_err| return leftover_err,
+    c = try readKeyIgnoreEOF();
+
+    if (c == '\x1b') {
+        // handle arrow keys
+        // \x1b[A etc.
+        var seq: [2]u8 = undefined;
+        seq[0] = stdin.readByte() catch |err| switch (err) {
+            error.EndOfStream => return c,
+            else => return err,
+        };
+        seq[1] = stdin.readByte() catch |err| switch (err) {
+            error.EndOfStream => return c,
+            else => return err,
+        };
+
+        if (seq[0] == '[') {
+            switch (seq[1]) {
+                'A' => return @intFromEnum(editorKey.ARROW_UP),
+                'B' => return @intFromEnum(editorKey.ARROW_DOWN),
+                'C' => return @intFromEnum(editorKey.ARROW_RIGHT),
+                'D' => return @intFromEnum(editorKey.ARROW_LEFT),
+                else => {},
+            }
+        }
     }
+
     return c;
+}
+
+fn readKeyIgnoreEOF() !u8 {
+    if (stdin.readByte()) |char| {
+        return char;
+    } else |err| switch (err) {
+        error.EndOfStream => return 0, // ignore as likely just read timeout
+        else => return err,
+    }
+}
+
+fn editorMoveCursor(key: u16) void {
+    switch (key) {
+        @intFromEnum(editorKey.ARROW_UP) => config.cy -= 1,
+        @intFromEnum(editorKey.ARROW_LEFT) => config.cx -= 1,
+        @intFromEnum(editorKey.ARROW_DOWN) => config.cy += 1,
+        @intFromEnum(editorKey.ARROW_RIGHT) => config.cx += 1,
+        else => {},
+    }
 }
 
 fn editorProcessKeypress() !void {
     const c = try editorReadKey();
-    if (c == ctrlModifier('q')) {
-        running = false;
+    switch (c) {
+        ctrlModifier('q') => running = false,
+        @intFromEnum(editorKey.ARROW_UP),
+        @intFromEnum(editorKey.ARROW_LEFT),
+        @intFromEnum(editorKey.ARROW_DOWN),
+        @intFromEnum(editorKey.ARROW_RIGHT),
+        => editorMoveCursor(c),
+        else => {},
     }
 }
 
