@@ -31,6 +31,8 @@ const editorKey = enum(u16) {
     ARROW_DOWN,
     ARROW_LEFT,
     ARROW_RIGHT,
+    PAGE_UP,
+    PAGE_DOWN,
 };
 
 pub fn main() !void {
@@ -195,9 +197,8 @@ fn editorReadKey() !u16 {
     c = try readKeyIgnoreEOF();
 
     if (c == '\x1b') {
-        // handle arrow keys
         // \x1b[A etc.
-        var seq: [2]u8 = undefined;
+        var seq: [3]u8 = undefined;
         seq[0] = stdin.readByte() catch |err| switch (err) {
             error.EndOfStream => return c,
             else => return err,
@@ -207,6 +208,22 @@ fn editorReadKey() !u16 {
             else => return err,
         };
 
+        // handle pgup and pgdown
+        if (seq[1] >= '0' and seq[1] <= '9') {
+            seq[2] = stdin.readByte() catch |err| switch (err) {
+                error.EndOfStream => return c,
+                else => return err,
+            };
+            if (seq[2] == '~') {
+                switch (seq[1]) {
+                    '5' => return @intFromEnum(editorKey.PAGE_UP),
+                    '6' => return @intFromEnum(editorKey.PAGE_DOWN),
+                    else => {},
+                }
+            }
+        }
+
+        // handle arrow keys
         if (seq[0] == '[') {
             switch (seq[1]) {
                 'A' => return @intFromEnum(editorKey.ARROW_UP),
@@ -257,6 +274,15 @@ fn editorProcessKeypress() !void {
         @intFromEnum(editorKey.ARROW_DOWN),
         @intFromEnum(editorKey.ARROW_RIGHT),
         => editorMoveCursor(c),
+        @intFromEnum(editorKey.PAGE_UP), @intFromEnum(editorKey.PAGE_DOWN) => {
+            const times: @TypeOf(config.window_size.ws_row) = config.window_size.ws_row;
+            for (0..times) |_| {
+                editorMoveCursor(if (c == @intFromEnum(editorKey.PAGE_UP))
+                    @intFromEnum(editorKey.ARROW_UP)
+                else
+                    @intFromEnum(editorKey.ARROW_DOWN));
+            }
+        },
         else => {},
     }
 }
