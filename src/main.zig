@@ -232,10 +232,18 @@ fn readKeyIgnoreEOF() !u8 {
 
 fn editorMoveCursor(key: u16) void {
     switch (key) {
-        @intFromEnum(editorKey.ARROW_UP) => config.cy -= 1,
-        @intFromEnum(editorKey.ARROW_LEFT) => config.cx -= 1,
-        @intFromEnum(editorKey.ARROW_DOWN) => config.cy += 1,
-        @intFromEnum(editorKey.ARROW_RIGHT) => config.cx += 1,
+        @intFromEnum(editorKey.ARROW_UP) => {
+            if (config.cy > 0) config.cy -= 1;
+        },
+        @intFromEnum(editorKey.ARROW_LEFT) => {
+            if (config.cx > 0) config.cx -= 1;
+        },
+        @intFromEnum(editorKey.ARROW_DOWN) => {
+            if (config.cy < config.window_size.ws_row - 1) config.cy += 1;
+        },
+        @intFromEnum(editorKey.ARROW_RIGHT) => {
+            if (config.cx < config.window_size.ws_col - 1) config.cx += 1;
+        },
         else => {},
     }
 }
