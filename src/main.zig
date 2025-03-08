@@ -31,6 +31,8 @@ const editorKey = enum(u16) {
     ARROW_DOWN,
     ARROW_LEFT,
     ARROW_RIGHT,
+    HOME,
+    END,
     PAGE_UP,
     PAGE_DOWN,
 };
@@ -208,30 +210,44 @@ fn editorReadKey() !u16 {
             else => return err,
         };
 
-        // handle pgup and pgdown
-        if (seq[1] >= '0' and seq[1] <= '9') {
-            seq[2] = stdin.readByte() catch |err| switch (err) {
-                error.EndOfStream => return c,
-                else => return err,
-            };
-            if (seq[2] == '~') {
+        switch (seq[0]) {
+            '[' => {
+                if (seq[1] >= '0' and seq[1] <= '9') {
+                    seq[2] = stdin.readByte() catch |err| switch (err) {
+                        error.EndOfStream => return c,
+                        else => return err,
+                    };
+                    if (seq[2] == '~') {
+                        switch (seq[1]) {
+                            '1' => return @intFromEnum(editorKey.HOME),
+                            '4' => return @intFromEnum(editorKey.END),
+                            '5' => return @intFromEnum(editorKey.PAGE_UP),
+                            '6' => return @intFromEnum(editorKey.PAGE_DOWN),
+                            '7' => return @intFromEnum(editorKey.HOME),
+                            '8' => return @intFromEnum(editorKey.END),
+                            else => {},
+                        }
+                    }
+                } else {
+                    switch (seq[1]) {
+                        'A' => return @intFromEnum(editorKey.ARROW_UP),
+                        'B' => return @intFromEnum(editorKey.ARROW_DOWN),
+                        'C' => return @intFromEnum(editorKey.ARROW_RIGHT),
+                        'D' => return @intFromEnum(editorKey.ARROW_LEFT),
+                        'H' => return @intFromEnum(editorKey.HOME),
+                        'F' => return @intFromEnum(editorKey.END),
+                        else => {},
+                    }
+                }
+            },
+            'O' => {
                 switch (seq[1]) {
-                    '5' => return @intFromEnum(editorKey.PAGE_UP),
-                    '6' => return @intFromEnum(editorKey.PAGE_DOWN),
+                    'H' => return @intFromEnum(editorKey.HOME),
+                    'F' => return @intFromEnum(editorKey.END),
                     else => {},
                 }
-            }
-        }
-
-        // handle arrow keys
-        if (seq[0] == '[') {
-            switch (seq[1]) {
-                'A' => return @intFromEnum(editorKey.ARROW_UP),
-                'B' => return @intFromEnum(editorKey.ARROW_DOWN),
-                'C' => return @intFromEnum(editorKey.ARROW_RIGHT),
-                'D' => return @intFromEnum(editorKey.ARROW_LEFT),
-                else => {},
-            }
+            },
+            else => {},
         }
     }
 
@@ -282,6 +298,12 @@ fn editorProcessKeypress() !void {
                 else
                     @intFromEnum(editorKey.ARROW_DOWN));
             }
+        },
+        @intFromEnum(editorKey.HOME) => {
+            config.cx = 0;
+        },
+        @intFromEnum(editorKey.END) => {
+            config.cx = config.window_size.ws_col - 1;
         },
         else => {},
     }
