@@ -164,12 +164,21 @@ fn editorDrawRows(arr: *std.ArrayListUnmanaged(u8)) !void {
         // draw editor lines
         const editorLinesRemain = i < config.num_lines;
         if (editorLinesRemain) {
-            _ = try writer.write(config.line.items[0..config.line.items.len]);
+            const maxLen = if (config.line.items.len > config.window_size.ws_col)
+                config.window_size.ws_col
+            else
+                config.line.items.len;
+            _ = try writer.write(config.line.items[0..maxLen]);
         } else {
             const shouldDrawWelcome = i == config.window_size.ws_row / 3;
             if (shouldDrawWelcome) {
                 // draw welcome message
                 const welcome = std.fmt.comptimePrint("kilo-zig -- version {s}", .{KILO_ZIG_VERSION});
+                if (welcome.len > config.window_size.ws_col) {
+                    // truncate if too long
+                    _ = try writer.write(welcome[0..config.window_size.ws_col]);
+                    continue;
+                }
                 var left_padding = (config.window_size.ws_col - welcome.len) / 2; // center text
                 if (left_padding > 0) {
                     _ = try writer.write("~");
