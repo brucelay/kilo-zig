@@ -12,8 +12,9 @@ const Config = struct {
     cy: u16,
     original_termios: posix.termios,
     window_size: std.posix.system.winsize,
+    line: std.ArrayListUnmanaged(u8),
+    num_lines: u16,
 };
-
 var config: Config = undefined;
 
 const stdout = std.io.getStdOut().writer();
@@ -33,11 +34,16 @@ const editorKey = enum(u16) {
     RIGHT,
     HOME,
     END,
+    DEL,
     PAGE_UP,
     PAGE_DOWN,
 };
 
+var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
+const allocator = arena.allocator();
+
 pub fn main() !void {
+    defer arena.deinit();
     if (enableRawMode()) |_| {} else |err| switch (err) {
         error.NotATerminal => {
             std.debug.print("Not a terminal\r\n", .{});
@@ -69,6 +75,7 @@ fn mainLoop() !void {
     while (running) {
         try editorRefreshScreen();
         try editorProcessKeypress();
+        try editorOpen();
     }
 }
 
@@ -142,25 +149,47 @@ fn getWindowSize() !std.posix.system.winsize {
     return window_size;
 }
 
-fn editorDrawRows(allocator: std.mem.Allocator, arr: *std.ArrayListUnmanaged(u8)) !void {
+fn editorOpen() !void {
+    config.line = try std.ArrayListUnmanaged(u8).initCapacity(allocator, 128);
+    try config.line.appendSlice(allocator, "Hello, world!");
+    config.num_lines = 1;
+}
+
+fn editorDrawRows(arr: *std.ArrayListUnmanaged(u8)) !void {
     _ = try resetCursorPosition();
     const writer = arr.writer(allocator);
     const clear_right = escape_character ++ "[K"; // clear right of cursor
-    for (0..config.window_size.ws_row - 1) |i| {
-        _ = try writer.write("~");
-        if (i == config.window_size.ws_row / 3) {
-            // draw welcome message
-            const welcome = std.fmt.comptimePrint("kilo-zig -- version {s}", .{KILO_ZIG_VERSION});
-            const left_padding = (config.window_size.ws_col - welcome.len) / 2; // center text
-            for (0..left_padding) |_| {
-                _ = try writer.write(" ");
+
+    for (0..config.window_size.ws_row) |i| {
+        // draw editor lines
+        const editorLinesRemain = i < config.num_lines;
+        if (editorLinesRemain) {
+            _ = try writer.write(config.line.items[0..config.line.items.len]);
+        } else {
+            const shouldDrawWelcome = i == config.window_size.ws_row / 3;
+            if (shouldDrawWelcome) {
+                // draw welcome message
+                const welcome = std.fmt.comptimePrint("kilo-zig -- version {s}", .{KILO_ZIG_VERSION});
+                var left_padding = (config.window_size.ws_col - welcome.len) / 2; // center text
+                if (left_padding > 0) {
+                    _ = try writer.write("~");
+                    left_padding -= 1;
+                }
+                for (0..left_padding) |_| {
+                    _ = try writer.write(" ");
+                }
+                _ = try writer.write(welcome);
+            } else {
+                // draw empty lines (~)
+                _ = try writer.write("~");
             }
-            _ = try writer.write(welcome);
         }
-        _ = try writer.write(clear_right ++ "\r\n");
+        _ = try writer.write(clear_right);
+        if (i < config.window_size.ws_row - 1) {
+            _ = try writer.write("\r\n");
+        }
     }
 
-    _ = try writer.write("~" ++ clear_right);
     _ = try stdout.write(arr.items);
 }
 
@@ -175,14 +204,10 @@ fn clearScreen() !void {
 
 /// Redraw editor
 fn editorRefreshScreen() !void {
-    var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
-    defer arena.deinit();
-
-    const allocator = arena.allocator();
     var arr = try std.ArrayListUnmanaged(u8).initCapacity(allocator, 1024);
 
     _ = try stdout.write(escape_character ++ "[?25l"); // hide cursor
-    _ = try editorDrawRows(allocator, &arr);
+    _ = try editorDrawRows(&arr);
     // move cursor to position
     _ = try stdout.print("{s}[{d};{d}H", .{ escape_character, config.cy + 1, config.cx + 1 });
     _ = try stdout.write(escape_character ++ "[?25h"); // show cursor
@@ -220,6 +245,7 @@ fn editorReadKey() !u16 {
                     if (seq[2] == '~') {
                         switch (seq[1]) {
                             '1' => return @intFromEnum(editorKey.HOME),
+                            '3' => return @intFromEnum(editorKey.DEL),
                             '4' => return @intFromEnum(editorKey.END),
                             '5' => return @intFromEnum(editorKey.PAGE_UP),
                             '6' => return @intFromEnum(editorKey.PAGE_DOWN),
