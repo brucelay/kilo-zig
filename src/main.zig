@@ -120,11 +120,13 @@ fn getWindowSize() !std.posix.system.winsize {
 }
 
 fn editorDrawRows(allocator: std.mem.Allocator, arr: *std.ArrayListUnmanaged(u8)) !void {
+    const clear_right = escape_character ++ "[K"; // clear right of cursor
     for (0..config.window_size.ws_row - 1) |_| {
-        try arr.appendSlice(allocator, "~\r\n");
+        try arr.appendSlice(allocator, "~" ++ clear_right ++ "\r\n");
     }
 
     try arr.appendSlice(allocator, "~");
+    try arr.appendSlice(allocator, clear_right);
     _ = try stdout.write(arr.items);
 }
 
@@ -145,7 +147,6 @@ fn editorRefreshScreen() !void {
     var arr = try std.ArrayListUnmanaged(u8).initCapacity(allocator, 1024);
 
     _ = try stdout.write(escape_character ++ "[?25l"); // hide cursor
-    try clearScreen();
     _ = try resetCursorPosition();
     _ = try editorDrawRows(allocator, &arr);
     _ = try resetCursorPosition();
