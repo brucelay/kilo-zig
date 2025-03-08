@@ -27,10 +27,10 @@ const CursorPosition = struct {
 };
 
 const editorKey = enum(u16) {
-    ARROW_UP = 1000,
-    ARROW_DOWN,
-    ARROW_LEFT,
-    ARROW_RIGHT,
+    UP = 1000,
+    DOWN,
+    LEFT,
+    RIGHT,
     HOME,
     END,
     PAGE_UP,
@@ -230,10 +230,10 @@ fn editorReadKey() !u16 {
                     }
                 } else {
                     switch (seq[1]) {
-                        'A' => return @intFromEnum(editorKey.ARROW_UP),
-                        'B' => return @intFromEnum(editorKey.ARROW_DOWN),
-                        'C' => return @intFromEnum(editorKey.ARROW_RIGHT),
-                        'D' => return @intFromEnum(editorKey.ARROW_LEFT),
+                        'A' => return @intFromEnum(editorKey.UP),
+                        'B' => return @intFromEnum(editorKey.DOWN),
+                        'C' => return @intFromEnum(editorKey.RIGHT),
+                        'D' => return @intFromEnum(editorKey.LEFT),
                         'H' => return @intFromEnum(editorKey.HOME),
                         'F' => return @intFromEnum(editorKey.END),
                         else => {},
@@ -265,16 +265,16 @@ fn readKeyIgnoreEOF() !u8 {
 
 fn editorMoveCursor(key: u16) void {
     switch (key) {
-        @intFromEnum(editorKey.ARROW_UP) => {
+        @intFromEnum(editorKey.UP) => {
             if (config.cy > 0) config.cy -= 1;
         },
-        @intFromEnum(editorKey.ARROW_LEFT) => {
+        @intFromEnum(editorKey.LEFT) => {
             if (config.cx > 0) config.cx -= 1;
         },
-        @intFromEnum(editorKey.ARROW_DOWN) => {
+        @intFromEnum(editorKey.DOWN) => {
             if (config.cy < config.window_size.ws_row - 1) config.cy += 1;
         },
-        @intFromEnum(editorKey.ARROW_RIGHT) => {
+        @intFromEnum(editorKey.RIGHT) => {
             if (config.cx < config.window_size.ws_col - 1) config.cx += 1;
         },
         else => {},
@@ -285,18 +285,18 @@ fn editorProcessKeypress() !void {
     const c = try editorReadKey();
     switch (c) {
         ctrlModifier('q') => running = false,
-        @intFromEnum(editorKey.ARROW_UP),
-        @intFromEnum(editorKey.ARROW_LEFT),
-        @intFromEnum(editorKey.ARROW_DOWN),
-        @intFromEnum(editorKey.ARROW_RIGHT),
+        @intFromEnum(editorKey.UP),
+        @intFromEnum(editorKey.LEFT),
+        @intFromEnum(editorKey.DOWN),
+        @intFromEnum(editorKey.RIGHT),
         => editorMoveCursor(c),
         @intFromEnum(editorKey.PAGE_UP), @intFromEnum(editorKey.PAGE_DOWN) => {
             const times: @TypeOf(config.window_size.ws_row) = config.window_size.ws_row;
             for (0..times) |_| {
                 editorMoveCursor(if (c == @intFromEnum(editorKey.PAGE_UP))
-                    @intFromEnum(editorKey.ARROW_UP)
+                    @intFromEnum(editorKey.UP)
                 else
-                    @intFromEnum(editorKey.ARROW_DOWN));
+                    @intFromEnum(editorKey.DOWN));
             }
         },
         @intFromEnum(editorKey.HOME) => {
