@@ -8,12 +8,12 @@ const escape_character = "\x1b";
 
 const Config = struct {
     // cursor pos
-    cx: u16,
-    cy: u16,
+    cx: u16 = 0,
+    cy: u16 = 0,
     original_termios: posix.termios,
     window_size: std.posix.system.winsize,
-    line: std.ArrayListUnmanaged(u8),
-    num_lines: u16,
+    lines: std.ArrayListUnmanaged([]const u8),
+    num_lines: u16 = 0,
 };
 var config: Config = undefined;
 
@@ -58,6 +58,11 @@ pub fn main() !void {
         return err;
     };
 
+    var args = try std.process.argsWithAllocator(allocator);
+    _ = args.next();
+    const filename = args.next();
+    try editorOpen(filename);
+
     mainLoop() catch |err| {
         cleanup();
         return err;
@@ -75,14 +80,11 @@ fn mainLoop() !void {
     while (running) {
         try editorRefreshScreen();
         try editorProcessKeypress();
-        try editorOpen();
     }
 }
 
 fn initEditor() !void {
-    config.cx = 10;
-    config.cy = 10;
-
+    config.lines = try std.ArrayListUnmanaged([]const u8).initCapacity(allocator, 128);
     config.window_size = try getWindowSize();
 }
 
@@ -149,10 +151,31 @@ fn getWindowSize() !std.posix.system.winsize {
     return window_size;
 }
 
-fn editorOpen() !void {
-    config.line = try std.ArrayListUnmanaged(u8).initCapacity(allocator, 128);
-    try config.line.appendSlice(allocator, "Hello, world!");
-    config.num_lines = 1;
+fn editorOpen(filename: ?[]const u8) !void {
+    if (filename == null) {
+        return;
+    }
+    const file = std.fs.cwd().openFile(filename.?, .{ .mode = .read_only }) catch |err| {
+        cleanupAndExit("Error opening file: {}", .{err});
+        unreachable;
+    };
+    defer std.fs.File.close(file);
+    const file_reader = file.reader();
+
+    while (true) {
+        var line = try std.ArrayListUnmanaged(u8).initCapacity(allocator, 128);
+        const line_writer = line.writer(allocator);
+        file_reader.streamUntilDelimiter(line_writer, '\n', null) catch |err| switch (err) {
+            error.EndOfStream => break,
+            else => return err,
+        };
+        try editorAppendRow(line.items);
+    }
+}
+
+fn editorAppendRow(data: []const u8) !void {
+    try config.lines.append(allocator, data);
+    config.num_lines += 1;
 }
 
 fn editorDrawRows(arr: *std.ArrayListUnmanaged(u8)) !void {
@@ -164,13 +187,13 @@ fn editorDrawRows(arr: *std.ArrayListUnmanaged(u8)) !void {
         // draw editor lines
         const editorLinesRemain = i < config.num_lines;
         if (editorLinesRemain) {
-            const maxLen = if (config.line.items.len > config.window_size.ws_col)
+            const maxLen = if (config.lines.items[i].len > config.window_size.ws_col)
                 config.window_size.ws_col
             else
-                config.line.items.len;
-            _ = try writer.write(config.line.items[0..maxLen]);
+                config.lines.items[i].len;
+            _ = try writer.print("{s}", .{config.lines.items[i][0..maxLen]});
         } else {
-            const shouldDrawWelcome = i == config.window_size.ws_row / 3;
+            const shouldDrawWelcome = config.num_lines == 0 and i == config.window_size.ws_row / 3;
             if (shouldDrawWelcome) {
                 // draw welcome message
                 const welcome = std.fmt.comptimePrint("kilo-zig -- version {s}", .{KILO_ZIG_VERSION});
@@ -214,6 +237,7 @@ fn clearScreen() !void {
 /// Redraw editor
 fn editorRefreshScreen() !void {
     var arr = try std.ArrayListUnmanaged(u8).initCapacity(allocator, 1024);
+    defer arr.deinit(allocator);
 
     _ = try stdout.write(escape_character ++ "[?25l"); // hide cursor
     _ = try editorDrawRows(&arr);
