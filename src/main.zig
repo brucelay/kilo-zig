@@ -9,11 +9,11 @@ const escape_character = "\x1b";
 const Config = struct {
     // cursor pos
     cx: u16 = 0,
-    cy: u16 = 0,
+    cy: u16 = 0, // cursor position in file
     original_termios: posix.termios,
     window_size: std.posix.system.winsize,
     lines: std.ArrayListUnmanaged([]const u8),
-    num_lines: u16 = 0,
+    line_offset: u16 = 0, // offset of the line in the file to start drawing
 };
 var config: Config = undefined;
 
@@ -175,7 +175,17 @@ fn editorOpen(filename: ?[]const u8) !void {
 
 fn editorAppendRow(data: []const u8) !void {
     try config.lines.append(allocator, data);
-    config.num_lines += 1;
+}
+
+fn editorScroll() void {
+    // if cursor is above the current line offset, scroll up
+    if (config.cy < config.line_offset) {
+        config.line_offset = config.cy;
+    }
+    // if cursor is past the window size, scroll down
+    if (config.cy >= config.line_offset + config.window_size.ws_row) {
+        config.line_offset = (config.cy - config.window_size.ws_row) + 1;
+    }
 }
 
 fn editorDrawRows(arr: *std.ArrayListUnmanaged(u8)) !void {
@@ -185,16 +195,18 @@ fn editorDrawRows(arr: *std.ArrayListUnmanaged(u8)) !void {
 
     for (0..config.window_size.ws_row) |i| {
         // draw editor lines
-        const editorLinesRemain = i < config.num_lines;
-        if (editorLinesRemain) {
-            const maxLen = if (config.lines.items[i].len > config.window_size.ws_col)
+        const file_line = i + config.line_offset;
+        const file_lines_remain = file_line < config.lines.items.len;
+        if (file_lines_remain) {
+            // draw file contents
+            const maxLen = if (config.lines.items[file_line].len > config.window_size.ws_col)
                 config.window_size.ws_col
             else
-                config.lines.items[i].len;
-            _ = try writer.print("{s}", .{config.lines.items[i][0..maxLen]});
+                config.lines.items[file_line].len;
+            _ = try writer.print("{s}", .{config.lines.items[file_line][0..maxLen]});
         } else {
-            const shouldDrawWelcome = config.num_lines == 0 and i == config.window_size.ws_row / 3;
-            if (shouldDrawWelcome) {
+            const should_draw_welcome = config.lines.items.len == 0 and i == config.window_size.ws_row / 3;
+            if (should_draw_welcome) {
                 // draw welcome message
                 const welcome = std.fmt.comptimePrint("kilo-zig -- version {s}", .{KILO_ZIG_VERSION});
                 if (welcome.len > config.window_size.ws_col) {
@@ -236,13 +248,15 @@ fn clearScreen() !void {
 
 /// Redraw editor
 fn editorRefreshScreen() !void {
+    editorScroll();
     var arr = try std.ArrayListUnmanaged(u8).initCapacity(allocator, 1024);
     defer arr.deinit(allocator);
 
     _ = try stdout.write(escape_character ++ "[?25l"); // hide cursor
     _ = try editorDrawRows(&arr);
     // move cursor to position
-    _ = try stdout.print("{s}[{d};{d}H", .{ escape_character, config.cy + 1, config.cx + 1 });
+    const cursor_line = config.cy - config.line_offset;
+    _ = try stdout.print("{s}[{d};{d}H", .{ escape_character, cursor_line + 1, config.cx + 1 });
     _ = try stdout.write(escape_character ++ "[?25h"); // show cursor
 }
 
@@ -331,7 +345,7 @@ fn editorMoveCursor(key: u16) void {
             if (config.cx > 0) config.cx -= 1;
         },
         @intFromEnum(editorKey.DOWN) => {
-            if (config.cy < config.window_size.ws_row - 1) config.cy += 1;
+            if (config.cy < config.lines.items.len) config.cy += 1;
         },
         @intFromEnum(editorKey.RIGHT) => {
             if (config.cx < config.window_size.ws_col - 1) config.cx += 1;
