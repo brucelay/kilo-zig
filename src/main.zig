@@ -8,12 +8,13 @@ const escape_character = "\x1b";
 
 const Config = struct {
     // cursor pos
-    cx: u16 = 0,
-    cy: u16 = 0, // cursor position in file
+    cx: u16,
+    cy: u16, // cursor position in file
     original_termios: posix.termios,
     window_size: std.posix.system.winsize,
     lines: std.ArrayListUnmanaged([]const u8),
-    line_offset: u16 = 0, // offset of the line in the file to start drawing
+    line_offset: u16, // offset of the line in the file to start drawing
+    column_offset: u16, // offset of the column to start drawing
 };
 var config: Config = undefined;
 
@@ -199,11 +200,28 @@ fn editorDrawRows(arr: *std.ArrayListUnmanaged(u8)) !void {
         const file_lines_remain = file_line < config.lines.items.len;
         if (file_lines_remain) {
             // draw file contents
-            const maxLen = if (config.lines.items[file_line].len > config.window_size.ws_col)
-                config.window_size.ws_col
-            else
-                config.lines.items[file_line].len;
-            _ = try writer.print("{s}", .{config.lines.items[file_line][0..maxLen]});
+
+            // calculate line width if scrolled horizontally
+            const line_length = config.lines.items[file_line].len;
+            var display_length = line_length;
+            if (config.column_offset > line_length) { // moved past end of line
+                display_length = 0;
+            } else {
+                display_length = line_length - config.column_offset;
+                // truncate line if too long
+                if (display_length > config.window_size.ws_col) {
+                    display_length = config.window_size.ws_col;
+                }
+            }
+
+            if (display_length == 0) {
+                // moved past end of line so display nothing
+                _ = try writer.write("");
+            } else {
+                const start_index = config.column_offset;
+                const end_index = config.column_offset + display_length;
+                _ = try writer.print("{s}", .{config.lines.items[file_line][start_index..end_index]});
+            }
         } else {
             const should_draw_welcome = config.lines.items.len == 0 and i == config.window_size.ws_row / 3;
             if (should_draw_welcome) {
