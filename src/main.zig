@@ -187,6 +187,14 @@ fn editorScroll() void {
     if (config.cy >= config.line_offset + config.window_size.ws_row) {
         config.line_offset = (config.cy - config.window_size.ws_row) + 1;
     }
+    // if cursor is to the left of the current column offset, scroll left
+    if (config.cx < config.column_offset) {
+        config.column_offset = config.cx;
+    }
+    // if cursor is past the window size, scroll right
+    if (config.cx >= config.column_offset + config.window_size.ws_col) {
+        config.column_offset = (config.cx - config.window_size.ws_col) + 1;
+    }
 }
 
 fn editorDrawRows(arr: *std.ArrayListUnmanaged(u8)) !void {
@@ -273,8 +281,10 @@ fn editorRefreshScreen() !void {
     _ = try stdout.write(escape_character ++ "[?25l"); // hide cursor
     _ = try editorDrawRows(&arr);
     // move cursor to position
+    // NOTE: cx and cy refer to file position, not screen position, this adjusts for that
     const cursor_line = config.cy - config.line_offset;
-    _ = try stdout.print("{s}[{d};{d}H", .{ escape_character, cursor_line + 1, config.cx + 1 });
+    const cursor_column = config.cx - config.column_offset;
+    _ = try stdout.print(escape_character ++ "[{d};{d}H", .{ cursor_line + 1, cursor_column + 1 });
     _ = try stdout.write(escape_character ++ "[?25h"); // show cursor
 }
 
@@ -366,7 +376,7 @@ fn editorMoveCursor(key: u16) void {
             if (config.cy < config.lines.items.len) config.cy += 1;
         },
         @intFromEnum(editorKey.RIGHT) => {
-            if (config.cx < config.window_size.ws_col - 1) config.cx += 1;
+            config.cx += 1;
         },
         else => {},
     }
