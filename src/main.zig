@@ -376,9 +376,21 @@ fn editorMoveCursor(key: u16) void {
             if (config.cy < config.lines.items.len) config.cy += 1;
         },
         @intFromEnum(editorKey.RIGHT) => {
-            config.cx += 1;
+            const not_on_extra_line = config.cy < config.lines.items.len;
+            if (not_on_extra_line) {
+                const not_past_end_of_line = config.cx < config.lines.items[config.cy].len;
+                if (not_past_end_of_line) config.cx += 1;
+            }
         },
         else => {},
+    }
+
+    // clamp to end of line after moving cursor
+    // e.g. if cursor is at end of line and moves down to shorter line
+    const not_on_extra_line = config.cy < config.lines.items.len;
+    if (not_on_extra_line) {
+        const past_end_of_line = config.cx > config.lines.items[config.cy].len;
+        if (past_end_of_line) config.cx = @intCast(config.lines.items[config.cy].len);
     }
 }
 
