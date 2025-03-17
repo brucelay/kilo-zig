@@ -370,7 +370,13 @@ fn editorMoveCursor(key: u16) void {
             if (config.cy > 0) config.cy -= 1;
         },
         @intFromEnum(editorKey.LEFT) => {
-            if (config.cx > 0) config.cx -= 1;
+            if (config.cx > 0) {
+                config.cx -= 1;
+            } else if (config.cy > 0) {
+                // move to end of previous line
+                config.cy -= 1;
+                config.cx = @intCast(config.lines.items[config.cy].len);
+            }
         },
         @intFromEnum(editorKey.DOWN) => {
             if (config.cy < config.lines.items.len) config.cy += 1;
