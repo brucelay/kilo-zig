@@ -385,7 +385,13 @@ fn editorMoveCursor(key: u16) void {
             const not_on_extra_line = config.cy < config.lines.items.len;
             if (not_on_extra_line) {
                 const not_past_end_of_line = config.cx < config.lines.items[config.cy].len;
-                if (not_past_end_of_line) config.cx += 1;
+                if (not_past_end_of_line) {
+                    config.cx += 1;
+                } else if (config.cx == config.lines.items[config.cy].len) {
+                    // move to start of next line
+                    config.cy += 1;
+                    config.cx = 0;
+                }
             }
         },
         else => {},
